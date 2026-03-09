@@ -16,6 +16,22 @@ declare global {
   }
 }
 
+const colorThemes = [
+  { id: 'default', name: 'Original Brand Colors', desc: 'Use the extracted brand palette', colors: ['#e2e8f0', '#94a3b8', '#64748b', '#475569', '#334155'] },
+  { id: 'tweaked1', name: 'Vibrant & Saturated', desc: 'Slightly tweaked for more pop', colors: ['#f43f5e', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6'] },
+  { id: 'tweaked2', name: 'Pastel & Soft', desc: 'Slightly tweaked for a softer look', colors: ['#fecdd3', '#fbcfe8', '#fce7f3', '#e0e7ff', '#dbeafe'] },
+  { id: 'different1', name: 'Neon Cyberpunk', desc: 'Vastly different, high contrast neon', colors: ['#00ff00', '#00ffff', '#ff00ff', '#ffff00', '#ff0000'] },
+  { id: 'different2', name: 'Monochrome Minimalist', desc: 'Vastly different, single color focus', colors: ['#ffffff', '#e5e5e5', '#a3a3a3', '#525252', '#000000'] },
+];
+
+const aspectRatios = [
+  { id: '1:1', name: 'Square (1:1)' },
+  { id: '16:9', name: 'Landscape (16:9)' },
+  { id: '9:16', name: 'Portrait (9:16)' },
+  { id: '4:3', name: 'Standard (4:3)' },
+  { id: '3:4', name: 'Vertical (3:4)' },
+];
+
 export default function App() {
   const [url, setUrl] = useState('tw.yahoo.com');
   
@@ -24,17 +40,20 @@ export default function App() {
   const [model, setModel] = useState('gemini-2.5-flash');
   const [apiKey, setApiKey] = useState('');
   const [textAuthMethod, setTextAuthMethod] = useState<'apikey' | 'oauth'>('apikey');
+  const [enableTextAnalysis, setEnableTextAnalysis] = useState(true);
   
   // Image AI Settings
   const [imageProvider, setImageProvider] = useState('google');
   const [imageModel, setImageModel] = useState('gemini-2.5-flash-image');
   const [imageApiKey, setImageApiKey] = useState('');
   const [imageAuthMethod, setImageAuthMethod] = useState<'apikey' | 'oauth'>('apikey');
+  const [enableImageGeneration, setEnableImageGeneration] = useState(true);
   
   const [hasPaidKey, setHasPaidKey] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [manualPrompt, setManualPrompt] = useState('');
   const [error, setError] = useState('');
   
   const [copied, setCopied] = useState(false);
@@ -43,6 +62,27 @@ export default function App() {
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatedImage, setGeneratedImage] = useState('');
   
+  // Image Generation Options
+  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const [includeText, setIncludeText] = useState(false);
+  const [imageText, setImageText] = useState('');
+  const [colorTheme, setColorTheme] = useState('default');
+  const [extractedColors, setExtractedColors] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (result?.section2?.content) {
+      const hexRegex = /#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/g;
+      const matches = result.section2.content.match(hexRegex);
+      if (matches && matches.length > 0) {
+        // Get up to 5 unique colors
+        const uniqueColors = Array.from(new Set(matches)).slice(0, 5) as string[];
+        setExtractedColors(uniqueColors);
+      } else {
+        setExtractedColors(['#e2e8f0', '#94a3b8', '#64748b', '#475569', '#334155']);
+      }
+    }
+  }, [result]);
+
   // 編輯與重新生成狀態
   const [editModes, setEditModes] = useState<Record<string, boolean>>({});
   const [regeneratingPrompt, setRegeneratingPrompt] = useState(false);
@@ -292,7 +332,17 @@ export default function App() {
   };
 
   const generatePreviewImage = async () => {
-    if (!result || !result.section6.content) return;
+    let promptToUse = result ? result.section6.content : manualPrompt;
+    if (!promptToUse) return;
+    
+    if (colorTheme !== 'default') {
+      const theme = colorThemes.find(t => t.id === colorTheme);
+      promptToUse += `\n\nColor Palette Instruction: Please use a ${theme?.name} color palette (${theme?.desc}). Specifically, try to incorporate these colors: ${theme?.colors.join(', ')}.`;
+    }
+
+    if (includeText && imageText.trim()) {
+      promptToUse += `\n\nTypography Instruction: The image MUST prominently feature the text "${imageText.trim()}" integrated into the design.`;
+    }
     
     setGeneratingImage(true);
     setError('');
@@ -307,7 +357,7 @@ export default function App() {
         const ai = new GoogleGenAI({ apiKey: keyToUse });
 
         const imageConfig: any = {
-          aspectRatio: "1:1",
+          aspectRatio: aspectRatio,
         };
 
         if (imageModel.includes('gemini-3')) {
@@ -316,7 +366,7 @@ export default function App() {
 
         const response = await ai.models.generateContent({
           model: imageModel,
-          contents: result.section6.content,
+          contents: promptToUse,
           config: {
             imageConfig
           }
@@ -341,6 +391,10 @@ export default function App() {
           throw new Error('請輸入 OpenAI API Key');
         }
         
+        let openaiSize = "1024x1024";
+        if (aspectRatio === "16:9") openaiSize = "1792x1024";
+        if (aspectRatio === "9:16") openaiSize = "1024x1792";
+        
         const response = await fetch('https://api.openai.com/v1/images/generations', {
           method: 'POST',
           headers: {
@@ -349,9 +403,9 @@ export default function App() {
           },
           body: JSON.stringify({
             model: imageModel,
-            prompt: result.section6.content,
+            prompt: promptToUse,
             n: 1,
-            size: "1024x1024"
+            size: openaiSize
           })
         });
         
@@ -379,229 +433,293 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans selection:bg-zinc-200">
+    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans selection:bg-slate-200">
       
       {/* Header */}
-      <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-20">
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 bg-indigo-50 border border-indigo-100 rounded-md flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-indigo-600" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight">URL to Mascot</h1>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">AI Visual Concept Generator</p>
+              <h1 className="text-lg font-semibold tracking-tight text-slate-800">URL to Mascot</h1>
+              <p className="uppercase tracking-widest text-[11px] text-indigo-400/80 font-medium">AI Visual Concept Generator</p>
             </div>
           </div>
-          <div className="hidden sm:flex items-center space-x-6 text-[11px] font-medium text-zinc-400 uppercase tracking-wider">
-            <span className="flex items-center"><Check className="w-3.5 h-3.5 mr-1.5 text-zinc-900" /> 3D Prompt</span>
-            <span className="flex items-center"><Check className="w-3.5 h-3.5 mr-1.5 text-zinc-900" /> Gemini Engine</span>
+          <div className="hidden sm:flex items-center space-x-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
+            <span className="flex items-center"><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-500/80" /> 3D Prompt</span>
+            <span className="flex items-center"><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-500/80" /> Gemini Engine</span>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
+      <main className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-12 gap-4">
         
         {/* Left Column: Input & Settings */}
-        <div className="lg:col-span-4 space-y-8">
+        <div className="lg:col-span-4 space-y-6">
           
           {/* Target URL Panel */}
-          <section className="space-y-4">
-            <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest px-1">1. Target Website</h2>
-            <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-sm">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Link2 className="w-4 h-4 text-zinc-400" />
+          {enableTextAnalysis && (
+            <section className="space-y-3">
+              <h2 className="text-[11px] uppercase tracking-widest text-slate-400 font-medium px-1">1. Target Website</h2>
+              <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Link2 className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value.replace(/^https?:\/\//, ''))}
+                    className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-800 rounded-md pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm"
+                    placeholder="e.g. spotify.com"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value.replace(/^https?:\/\//, ''))}
-                  className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all text-sm"
-                  placeholder="e.g. spotify.com"
-                />
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* AI Engine Settings */}
-          <section className="space-y-4">
-            <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest px-1">2. Engine Configuration</h2>
-            <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-sm space-y-6">
+          <section className="space-y-3">
+            <h2 className="text-[11px] uppercase tracking-widest text-slate-400 font-medium px-1">
+              {enableTextAnalysis ? '2. Engine Configuration' : '1. Engine Configuration'}
+            </h2>
+            <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-6">
               
               {/* Text Provider */}
               <div className="space-y-3">
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Text Analysis</label>
-                <div className="grid grid-cols-1 gap-2">
-                  <select
-                    value={provider}
-                    onChange={(e) => setProvider(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-400 transition-all appearance-none text-sm font-medium"
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] uppercase tracking-widest text-slate-400 font-medium">Text Analysis</label>
+                  <button
+                    type="button"
+                    disabled={!enableImageGeneration}
+                    onClick={() => setEnableTextAnalysis(!enableTextAnalysis)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-colors duration-200 ease-in-out ${enableTextAnalysis ? 'bg-indigo-600' : 'bg-slate-200'} ${!enableImageGeneration ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-400 transition-all appearance-none text-sm"
-                  >
-                    {models[provider].map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
+                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enableTextAnalysis ? 'translate-x-2' : '-translate-x-2'}`} />
+                  </button>
                 </div>
+                {enableTextAnalysis && (
+                  <>
+                    <div className="grid grid-cols-1 gap-2">
+                      <select
+                        value={provider}
+                        onChange={(e) => setProvider(e.target.value)}
+                        className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-800 rounded-md px-4 py-2.5 focus:outline-none focus:border-slate-400 transition-all appearance-none text-sm font-medium"
+                      >
+                        {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <select
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-800 rounded-md px-4 py-2.5 focus:outline-none focus:border-slate-400 transition-all appearance-none text-sm"
+                      >
+                        {models[provider].map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
                 
                 <div className="pt-2">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Authentication</span>
+                    <span className="text-[11px] uppercase tracking-widest text-slate-400 font-medium">Authentication</span>
                     {provider === 'google' && textAuthMethod === 'apikey' && (
                       <button 
                         onClick={handleSelectKey}
-                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-wider"
+                        className="text-[10px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors uppercase tracking-wider"
                       >
                         {hasPaidKey ? 'Key Selected' : 'Select Paid Key'}
                       </button>
                     )}
                   </div>
                   
-                  <div className="flex bg-zinc-100 p-1 rounded-xl mb-3">
+                  <div className="flex bg-slate-100 p-1 rounded-md mb-3">
                     <button
                       onClick={() => setTextAuthMethod('apikey')}
-                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-lg transition-all ${textAuthMethod === 'apikey' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-sm transition-all ${textAuthMethod === 'apikey' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       API Key
                     </button>
                     <button
                       onClick={() => setTextAuthMethod('oauth')}
-                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-lg transition-all ${textAuthMethod === 'oauth' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-sm transition-all ${textAuthMethod === 'oauth' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       OAuth
                     </button>
                   </div>
 
                   {textAuthMethod === 'apikey' ? (
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Key className="w-3.5 h-3.5 text-zinc-400" />
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <Key className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
+                        <input
+                          type="password"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          disabled={provider === 'google' && hasPaidKey}
+                          placeholder={provider === 'google' ? (hasPaidKey ? "Using selected key" : "Default key") : "Enter API Key"}
+                          className={`w-full border rounded-md pl-10 pr-4 py-2.5 focus:outline-none transition-all font-mono text-xs ${provider === 'google' && hasPaidKey ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/20'}`}
+                        />
                       </div>
-                      <input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder={provider === 'google' ? (hasPaidKey ? "Using selected key" : "Default key") : "Enter API Key"}
-                        className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:border-zinc-400 transition-all font-mono text-xs"
-                      />
+                      {provider === 'google' && (
+                        <p className="text-[10px] text-slate-500 leading-tight flex items-center">
+                          {!hasPaidKey ? (
+                            "若不填寫 API Key，系統將使用自帶的預設金鑰。"
+                          ) : (
+                            <>
+                              <Check className="w-3 h-3 mr-1 text-emerald-500" />
+                              <span className="text-emerald-600/90 font-medium">USING SELECTED KEY</span>
+                            </>
+                          )}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <button 
                       onClick={() => alert('OAuth flow would initiate here. Please configure Client ID.')}
-                      className="w-full bg-zinc-900 text-white rounded-xl py-2.5 flex items-center justify-center space-x-2 hover:bg-zinc-800 transition-colors active:scale-[0.98]"
+                      className="w-full bg-indigo-600 text-white rounded-md py-2.5 flex items-center justify-center space-x-2 hover:bg-indigo-700 transition-colors active:scale-[0.98]"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span className="text-xs font-medium">Connect with {providers.find(p => p.id === provider)?.name}</span>
                     </button>
                   )}
                 </div>
+                </>
+                )}
               </div>
 
-              <div className="h-px bg-zinc-100 mx-1"></div>
+              <div className="h-px bg-slate-100 mx-1"></div>
 
               {/* Image Provider */}
               <div className="space-y-3">
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Image Generation</label>
-                <div className="grid grid-cols-1 gap-2">
-                  <select
-                    value={imageProvider}
-                    onChange={(e) => setImageProvider(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-400 transition-all appearance-none text-sm font-medium"
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] uppercase tracking-widest text-slate-400 font-medium">Image Generation</label>
+                  <button
+                    type="button"
+                    disabled={!enableTextAnalysis}
+                    onClick={() => setEnableImageGeneration(!enableImageGeneration)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-colors duration-200 ease-in-out ${enableImageGeneration ? 'bg-indigo-600' : 'bg-slate-200'} ${!enableTextAnalysis ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {imageProviders.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <select
-                    value={imageModel}
-                    onChange={(e) => setImageModel(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-400 transition-all appearance-none text-sm"
-                  >
-                    {imageModels[imageProvider].map(m => (
-                      <option key={m} value={m}>{imageModelNames[m] || m}</option>
-                    ))}
-                  </select>
+                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enableImageGeneration ? 'translate-x-2' : '-translate-x-2'}`} />
+                  </button>
                 </div>
+                {enableImageGeneration && (
+                  <>
+                    <div className="grid grid-cols-1 gap-2">
+                      <select
+                        value={imageProvider}
+                        onChange={(e) => setImageProvider(e.target.value)}
+                        className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-800 rounded-md px-4 py-2.5 focus:outline-none focus:border-slate-400 transition-all appearance-none text-sm font-medium"
+                      >
+                        {imageProviders.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <select
+                        value={imageModel}
+                        onChange={(e) => setImageModel(e.target.value)}
+                        className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-800 rounded-md px-4 py-2.5 focus:outline-none focus:border-slate-400 transition-all appearance-none text-sm"
+                      >
+                        {imageModels[imageProvider].map(m => (
+                          <option key={m} value={m}>{imageModelNames[m] || m}</option>
+                        ))}
+                      </select>
+                    </div>
                 
                 <div className="pt-2">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Authentication</span>
+                    <span className="text-[11px] uppercase tracking-widest text-slate-400 font-medium">Authentication</span>
                     {imageProvider === 'google' && imageAuthMethod === 'apikey' && (
                       <button 
                         onClick={handleSelectKey}
-                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-wider"
+                        className="text-[10px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors uppercase tracking-wider"
                       >
                         {hasPaidKey ? 'Key Selected' : 'Select Paid Key'}
                       </button>
                     )}
                   </div>
 
-                  <div className="flex bg-zinc-100 p-1 rounded-xl mb-3">
+                  <div className="flex bg-slate-100 p-1 rounded-md mb-3">
                     <button
                       onClick={() => setImageAuthMethod('apikey')}
-                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-lg transition-all ${imageAuthMethod === 'apikey' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-sm transition-all ${imageAuthMethod === 'apikey' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       API Key
                     </button>
                     <button
                       onClick={() => setImageAuthMethod('oauth')}
-                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-lg transition-all ${imageAuthMethod === 'oauth' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                      className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-sm transition-all ${imageAuthMethod === 'oauth' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       OAuth
                     </button>
                   </div>
 
                   {imageAuthMethod === 'apikey' ? (
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Key className="w-3.5 h-3.5 text-zinc-400" />
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <Key className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
+                        <input
+                          type="password"
+                          value={imageApiKey}
+                          onChange={(e) => setImageApiKey(e.target.value)}
+                          disabled={imageProvider === 'google' && hasPaidKey}
+                          placeholder={imageProvider === 'google' ? (hasPaidKey ? "Using selected key" : "Default key") : "Enter API Key"}
+                          className={`w-full border rounded-md pl-10 pr-4 py-2.5 focus:outline-none transition-all font-mono text-xs ${imageProvider === 'google' && hasPaidKey ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/20'}`}
+                        />
                       </div>
-                      <input
-                        type="password"
-                        value={imageApiKey}
-                        onChange={(e) => setImageApiKey(e.target.value)}
-                        placeholder={imageProvider === 'google' ? (hasPaidKey ? "Using selected key" : "Default key") : "Enter API Key"}
-                        className="w-full bg-zinc-50 border border-zinc-200 text-zinc-900 rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:border-zinc-400 transition-all font-mono text-xs"
-                      />
+                      {imageProvider === 'google' && (
+                        <p className="text-[10px] text-slate-500 leading-tight flex items-center">
+                          {!hasPaidKey ? (
+                            "若不填寫 API Key，系統將使用自帶的預設金鑰。"
+                          ) : (
+                            <>
+                              <Check className="w-3 h-3 mr-1 text-emerald-500" />
+                              <span className="text-emerald-600/90 font-medium">USING SELECTED KEY</span>
+                            </>
+                          )}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <button 
                       onClick={() => alert('OAuth flow would initiate here. Please configure Client ID.')}
-                      className="w-full bg-zinc-900 text-white rounded-xl py-2.5 flex items-center justify-center space-x-2 hover:bg-zinc-800 transition-colors active:scale-[0.98]"
+                      className="w-full bg-indigo-600 text-white rounded-md py-2.5 flex items-center justify-center space-x-2 hover:bg-indigo-700 transition-colors active:scale-[0.98]"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span className="text-xs font-medium">Connect with {imageProviders.find(p => p.id === imageProvider)?.name}</span>
                     </button>
                   )}
                 </div>
+                </>
+                )}
               </div>
             </div>
           </section>
 
-          <button
-            onClick={generateConcept}
-            disabled={loading}
-            className={`w-full py-4 rounded-2xl font-semibold text-sm transition-all flex items-center justify-center space-x-2 shadow-sm
-              ${loading 
-                ? 'bg-zinc-100 text-zinc-400 cursor-wait' 
-                : 'bg-zinc-900 text-white hover:bg-zinc-800 active:scale-[0.98]'
-              }`}
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Analyzing...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4" />
-                <span>Generate Mascot Concept</span>
-              </>
-            )}
-          </button>
+          {enableTextAnalysis && (
+            <button
+              onClick={generateConcept}
+              disabled={loading}
+              className={`w-full py-4 rounded-md font-semibold text-sm transition-all flex items-center justify-center space-x-2 shadow-sm
+                ${loading 
+                  ? 'bg-indigo-50 text-indigo-400 cursor-wait border border-indigo-100' 
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98]'
+                }`}
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  <span>Generate Mascot Concept</span>
+                </>
+              )}
+            </button>
+          )}
 
           {error && (
             <motion.div 
@@ -617,53 +735,54 @@ export default function App() {
         </div>
 
         {/* Right Column: Results Display */}
-        <div className="lg:col-span-8 space-y-8 relative">
+        <div className="lg:col-span-8 space-y-6 relative">
           
-          {!result && !loading && (
-            <div className="h-full min-h-[500px] border-2 border-dashed border-zinc-200 rounded-3xl flex flex-col items-center justify-center text-zinc-400 p-10">
-              <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mb-6">
-                <Box className="w-7 h-7 text-zinc-300" />
+          {!result && !loading && enableTextAnalysis && (
+            <div className="h-full min-h-[500px] bg-white border border-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-400 p-10 shadow-sm">
+              <div className="w-16 h-16 bg-indigo-50/50 rounded-full flex items-center justify-center mb-6">
+                <Box className="w-7 h-7 text-indigo-300" />
               </div>
-              <h3 className="text-base font-semibold mb-2 text-zinc-900">Ready to Create</h3>
-              <p className="max-w-xs text-center text-sm leading-relaxed text-zinc-500">
+              <h3 className="text-base font-semibold mb-2 text-slate-800">Ready to Create</h3>
+              <p className="max-w-xs text-center text-sm leading-relaxed text-slate-500">
                 Enter a website URL to decompose its brand essence and transform it into a 3D mascot concept.
               </p>
             </div>
           )}
 
           {loading && (
-            <div className="h-full min-h-[500px] flex items-center justify-center z-10 bg-white/50 backdrop-blur-sm rounded-3xl border border-zinc-200 shadow-sm">
+            <div className="h-full min-h-[500px] flex items-center justify-center z-10 bg-white backdrop-blur-sm rounded-lg border border-slate-200 shadow-sm">
                <div className="flex flex-col items-center space-y-6">
                  <div className="relative w-16 h-16">
-                   <div className="absolute inset-0 border-2 border-zinc-100 rounded-full"></div>
-                   <div className="absolute inset-0 border-t-2 border-zinc-900 rounded-full animate-spin"></div>
-                   <Sparkles className="absolute inset-0 m-auto w-5 h-5 text-zinc-900 animate-pulse" />
+                   <div className="absolute inset-0 border-2 border-slate-100 rounded-full"></div>
+                   <div className="absolute inset-0 border-t-2 border-indigo-600 rounded-full animate-spin"></div>
+                   <Sparkles className="absolute inset-0 m-auto w-5 h-5 text-amber-500 animate-pulse" />
                  </div>
-                 <p className="text-zinc-500 font-medium tracking-widest text-[10px] uppercase">Extracting Brand Essence</p>
+                 <p className="text-slate-500 font-medium tracking-widest text-[10px] uppercase">Extracting Brand Essence</p>
                </div>
             </div>
           )}
 
-          {result && !loading && (
+          {(result || !enableTextAnalysis) && !loading && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="space-y-10"
+              className="space-y-6 bg-white border border-slate-200 rounded-lg p-6 shadow-sm"
             >
               
               {/* Output Sections Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {enableTextAnalysis && result && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
                 {/* Section 1 */}
-                <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm md:col-span-2 space-y-4">
+                <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm md:col-span-2 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-zinc-50 rounded-lg flex items-center justify-center border border-zinc-100">
-                        <Lightbulb className="w-4 h-4 text-zinc-900" />
+                      <div className="w-8 h-8 bg-amber-50 rounded-md flex items-center justify-center border border-amber-100">
+                        <Lightbulb className="w-4 h-4 text-amber-500" />
                       </div>
-                      <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-tight">Core Concept & Keywords</h3>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Core Concept & Keywords</h3>
                     </div>
-                    <button onClick={() => toggleEdit('section1')} className="text-zinc-400 hover:text-zinc-900 transition-colors">
+                    <button onClick={() => toggleEdit('section1')} className="text-slate-400 hover:text-slate-700 transition-colors">
                       {editModes['section1'] ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                     </button>
                   </div>
@@ -671,14 +790,14 @@ export default function App() {
                     <textarea 
                       value={result.section1.content}
                       onChange={(e) => handleContentChange('section1', e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-xl p-4 text-sm focus:outline-none focus:border-zinc-400 min-h-[100px]"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-md p-4 text-sm focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/20 min-h-[100px]"
                     />
                   ) : (
-                    <p className="text-zinc-600 leading-relaxed text-sm">{result.section1.content}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm">{result.section1.content}</p>
                   )}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {result.section1.keywords.map((kw: string, i: number) => (
-                      <span key={i} className="px-3 py-1 bg-zinc-100 text-zinc-600 rounded-full text-[10px] font-semibold uppercase tracking-wider">
+                      <span key={i} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-sm text-[10px] font-semibold uppercase tracking-wider">
                         {kw}
                       </span>
                     ))}
@@ -686,15 +805,15 @@ export default function App() {
                 </div>
 
                 {/* Section 2 */}
-                <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-zinc-50 rounded-lg flex items-center justify-center border border-zinc-100">
-                        <Bot className="w-4 h-4 text-zinc-900" />
+                      <div className="w-8 h-8 bg-indigo-50 rounded-md flex items-center justify-center border border-indigo-100">
+                        <Bot className="w-4 h-4 text-indigo-500" />
                       </div>
-                      <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-tight">Character Base</h3>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Character Base</h3>
                     </div>
-                    <button onClick={() => toggleEdit('section2')} className="text-zinc-400 hover:text-zinc-900 transition-colors">
+                    <button onClick={() => toggleEdit('section2')} className="text-slate-400 hover:text-slate-700 transition-colors">
                       {editModes['section2'] ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                     </button>
                   </div>
@@ -702,23 +821,23 @@ export default function App() {
                     <textarea 
                       value={result.section2.content}
                       onChange={(e) => handleContentChange('section2', e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-xl p-4 text-sm focus:outline-none focus:border-zinc-400 min-h-[120px]"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-md p-4 text-sm focus:outline-none focus:border-slate-400 min-h-[120px]"
                     />
                   ) : (
-                    <p className="text-zinc-600 leading-relaxed text-sm">{result.section2.content}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm">{result.section2.content}</p>
                   )}
                 </div>
 
                 {/* Section 3 */}
-                <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-zinc-50 rounded-lg flex items-center justify-center border border-zinc-100">
-                        <Paintbrush className="w-4 h-4 text-zinc-900" />
+                      <div className="w-8 h-8 bg-emerald-50 rounded-md flex items-center justify-center border border-emerald-100">
+                        <Paintbrush className="w-4 h-4 text-emerald-500" />
                       </div>
-                      <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-tight">Equipment & Gear</h3>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Equipment & Gear</h3>
                     </div>
-                    <button onClick={() => toggleEdit('section3')} className="text-zinc-400 hover:text-zinc-900 transition-colors">
+                    <button onClick={() => toggleEdit('section3')} className="text-slate-400 hover:text-slate-700 transition-colors">
                       {editModes['section3'] ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                     </button>
                   </div>
@@ -726,23 +845,23 @@ export default function App() {
                     <textarea 
                       value={result.section3.content}
                       onChange={(e) => handleContentChange('section3', e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-xl p-4 text-sm focus:outline-none focus:border-zinc-400 min-h-[120px]"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-md p-4 text-sm focus:outline-none focus:border-slate-400 min-h-[120px]"
                     />
                   ) : (
-                    <p className="text-zinc-600 leading-relaxed text-sm">{result.section3.content}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm">{result.section3.content}</p>
                   )}
                 </div>
 
                 {/* Section 4 */}
-                <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-zinc-50 rounded-lg flex items-center justify-center border border-zinc-100">
-                        <Map className="w-4 h-4 text-zinc-900" />
+                      <div className="w-8 h-8 bg-indigo-50 rounded-md flex items-center justify-center border border-indigo-100">
+                        <Map className="w-4 h-4 text-indigo-500" />
                       </div>
-                      <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-tight">Environment</h3>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Environment</h3>
                     </div>
-                    <button onClick={() => toggleEdit('section4')} className="text-zinc-400 hover:text-zinc-900 transition-colors">
+                    <button onClick={() => toggleEdit('section4')} className="text-slate-400 hover:text-slate-700 transition-colors">
                       {editModes['section4'] ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                     </button>
                   </div>
@@ -750,23 +869,23 @@ export default function App() {
                     <textarea 
                       value={result.section4.content}
                       onChange={(e) => handleContentChange('section4', e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-xl p-4 text-sm focus:outline-none focus:border-zinc-400 min-h-[120px]"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-md p-4 text-sm focus:outline-none focus:border-slate-400 min-h-[120px]"
                     />
                   ) : (
-                    <p className="text-zinc-600 leading-relaxed text-sm">{result.section4.content}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm">{result.section4.content}</p>
                   )}
                 </div>
 
                 {/* Section 5 */}
-                <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-zinc-50 rounded-lg flex items-center justify-center border border-zinc-100">
-                        <Sparkles className="w-4 h-4 text-zinc-900" />
+                      <div className="w-8 h-8 bg-amber-50 rounded-md flex items-center justify-center border border-amber-100">
+                        <Sparkles className="w-4 h-4 text-amber-500" />
                       </div>
-                      <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-tight">Lighting & Rendering</h3>
+                      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Lighting & Rendering</h3>
                     </div>
-                    <button onClick={() => toggleEdit('section5')} className="text-zinc-400 hover:text-zinc-900 transition-colors">
+                    <button onClick={() => toggleEdit('section5')} className="text-slate-400 hover:text-slate-700 transition-colors">
                       {editModes['section5'] ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                     </button>
                   </div>
@@ -774,111 +893,181 @@ export default function App() {
                     <textarea 
                       value={result.section5.content}
                       onChange={(e) => handleContentChange('section5', e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-xl p-4 text-sm focus:outline-none focus:border-zinc-400 min-h-[120px]"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-md p-4 text-sm focus:outline-none focus:border-slate-400 min-h-[120px]"
                     />
                   ) : (
-                    <p className="text-zinc-600 leading-relaxed text-sm">{result.section5.content}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm">{result.section5.content}</p>
                   )}
                 </div>
 
               </div>
+              )}
 
               {/* Section 6: AI Prompt Box */}
-              <div className="bg-white border border-zinc-200 rounded-3xl p-8 shadow-sm space-y-6">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-8 space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center">
-                      <ImageIcon className="w-5 h-5 text-white" />
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-md flex items-center justify-center">
+                        <ImageIcon className="w-5 h-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-slate-800">AI Visual Prompt</h3>
+                        <p className="text-[10px] text-indigo-400 uppercase tracking-widest font-medium">Optimized for 3D Rendering</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-base font-bold text-zinc-900">AI Visual Prompt</h3>
-                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">Optimized for 3D Rendering</p>
+                    <div className="flex items-center space-x-2">
+                      {enableTextAnalysis && (
+                        <button 
+                          onClick={regeneratePrompt}
+                          disabled={regeneratingPrompt}
+                          className="flex items-center space-x-2 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-md text-slate-600 transition-all disabled:opacity-50 active:scale-95"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${regeneratingPrompt ? 'animate-spin' : ''}`} />
+                          <span>Regenerate</span>
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleCopy(result ? result.section6.content : manualPrompt)}
+                        className="flex items-center space-x-2 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-md text-white transition-all active:scale-95"
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copied ? 'Copied' : 'Copy Prompt'}</span>
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button 
-                      onClick={regeneratePrompt}
-                      disabled={regeneratingPrompt}
-                      className="flex items-center space-x-2 text-[11px] font-bold bg-zinc-100 hover:bg-zinc-200 px-4 py-2 rounded-xl text-zinc-600 transition-all disabled:opacity-50 active:scale-95"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${regeneratingPrompt ? 'animate-spin' : ''}`} />
-                      <span>Regenerate</span>
-                    </button>
-                    <button 
-                      onClick={() => handleCopy(result.section6.content)}
-                      className="flex items-center space-x-2 text-[11px] font-bold bg-zinc-900 hover:bg-zinc-800 px-4 py-2 rounded-xl text-white transition-all active:scale-95"
-                    >
-                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copied ? 'Copied' : 'Copy Prompt'}</span>
-                    </button>
-                  </div>
-                </div>
-                
-                {editModes['section6'] ? (
-                  <textarea 
-                    value={result.section6.content}
-                    onChange={(e) => handleContentChange('section6', e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-xl p-6 font-mono text-xs leading-relaxed focus:outline-none focus:border-zinc-400 min-h-[200px]"
-                  />
-                ) : (
-                  <div className="relative group/prompt">
-                    <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-6 text-zinc-600 font-mono text-xs leading-relaxed whitespace-pre-wrap select-all">
-                      {result.section6.content}
+                  
+                  {editModes['section6'] || !enableTextAnalysis ? (
+                    <textarea 
+                      value={result ? result.section6.content : manualPrompt}
+                      onChange={(e) => {
+                        if (result) {
+                          handleContentChange('section6', e.target.value);
+                        } else {
+                          setManualPrompt(e.target.value);
+                        }
+                      }}
+                      placeholder={!enableTextAnalysis ? "Enter your prompt here..." : ""}
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-md p-6 font-mono text-xs leading-relaxed focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/20 min-h-[200px]"
+                    />
+                  ) : (
+                    <div className="relative group/prompt">
+                      <div className="bg-slate-50 border border-slate-200 rounded-md p-6 text-slate-600 font-mono text-xs leading-relaxed whitespace-pre-wrap select-all">
+                        {result.section6.content}
+                      </div>
+                      <button 
+                        onClick={() => toggleEdit('section6')} 
+                        className="absolute top-4 right-4 p-2 bg-white border border-slate-200 rounded-md text-slate-400 hover:text-slate-700 opacity-0 group-hover/prompt:opacity-100 transition-all shadow-sm"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => toggleEdit('section6')} 
-                      className="absolute top-4 right-4 p-2 bg-white border border-zinc-200 rounded-lg text-zinc-400 hover:text-zinc-900 opacity-0 group-hover/prompt:opacity-100 transition-all shadow-sm"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
+                  )}
 
-                {/* 算圖預覽按鈕 */}
-                <div className="pt-4 flex flex-col md:flex-row items-center gap-6">
-                  <button
-                    onClick={generatePreviewImage}
-                    disabled={generatingImage}
-                    className={`flex-1 w-full py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center space-x-2 shadow-sm
-                      ${generatingImage 
-                        ? 'bg-zinc-100 text-zinc-400 cursor-wait' 
-                        : 'bg-zinc-900 text-white hover:bg-zinc-800 active:scale-[0.98]'
-                      }`}
-                  >
-                    {generatingImage ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Paintbrush className="w-4 h-4" />
-                        <span>Generate Preview Image</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                  {/* Image Generation Options */}
+                  {enableImageGeneration && (
+                    <div className="space-y-4 pt-4 border-t border-slate-200">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="block text-[11px] uppercase tracking-widest text-slate-500 font-medium">Color Palette</label>
+                          <select
+                            value={colorTheme}
+                            onChange={(e) => setColorTheme(e.target.value)}
+                            className="w-full bg-white border border-slate-200 text-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
+                          >
+                            {colorThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                          <div className="flex items-center space-x-1 mt-2">
+                            {(colorTheme === 'default' && extractedColors.length > 0 ? extractedColors : colorThemes.find(t => t.id === colorTheme)?.colors || []).map((color, idx) => (
+                              <div key={idx} className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" style={{ backgroundColor: color }} title={color} />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-[11px] uppercase tracking-widest text-slate-500 font-medium">Aspect Ratio</label>
+                          <select
+                            value={aspectRatio}
+                            onChange={(e) => setAspectRatio(e.target.value)}
+                            className="w-full bg-white border border-slate-200 text-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
+                          >
+                            {aspectRatios.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
 
-                {generatedImage && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="mt-8 space-y-4"
-                  >
-                    <div className="relative group rounded-3xl overflow-hidden border border-zinc-200 shadow-md bg-zinc-100 aspect-square max-w-lg mx-auto">
-                      <img 
-                        src={generatedImage} 
-                        alt="Mascot Preview" 
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors pointer-events-none"></div>
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="includeText"
+                            checked={includeText}
+                            onChange={(e) => setIncludeText(e.target.checked)}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <label htmlFor="includeText" className="text-sm text-slate-700 font-medium cursor-pointer">
+                            Include Text in Image
+                          </label>
+                        </div>
+                        
+                        {includeText && (
+                          <input
+                            type="text"
+                            value={imageText}
+                            onChange={(e) => setImageText(e.target.value)}
+                            placeholder="Enter text to appear in the image..."
+                            className="w-full bg-white border border-slate-200 text-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
+                          />
+                        )}
+                      </div>
                     </div>
-                    <p className="text-center text-[10px] text-zinc-400 uppercase tracking-widest font-medium">
-                      Preview generated using {imageModelNames[imageModel] || imageModel}
-                    </p>
-                  </motion.div>
-                )}
+                  )}
+
+                  {/* 算圖預覽按鈕 */}
+                  {enableImageGeneration && (
+                    <div className="pt-4 flex flex-col md:flex-row items-center gap-6">
+                      <button
+                        onClick={generatePreviewImage}
+                        disabled={generatingImage}
+                        className={`flex-1 w-full py-4 rounded-md font-bold text-sm transition-all flex items-center justify-center space-x-2 shadow-sm
+                          ${generatingImage 
+                            ? 'bg-indigo-50 text-indigo-400 cursor-wait border border-indigo-100' 
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98]'
+                          }`}
+                      >
+                        {generatingImage ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Generating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Paintbrush className="w-4 h-4 text-amber-300" />
+                            <span>Generate Preview Image</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {generatedImage && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="mt-8 space-y-4"
+                    >
+                      <div className="relative group rounded-xl overflow-hidden border border-slate-200 shadow-md bg-slate-100 aspect-square max-w-lg mx-auto">
+                        <img 
+                          src={generatedImage} 
+                          alt="Mascot Preview" 
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors pointer-events-none"></div>
+                      </div>
+                      <p className="text-center text-[10px] text-slate-400 uppercase tracking-widest font-medium">
+                        Preview generated using {imageModelNames[imageModel] || imageModel}
+                      </p>
+                    </motion.div>
+                  )}
               </div>
 
             </motion.div>
@@ -888,14 +1077,14 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="max-w-5xl mx-auto px-6 py-12 border-t border-zinc-200">
+      <footer className="max-w-5xl mx-auto px-6 py-12 border-t border-slate-200">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <p className="text-[11px] text-zinc-400 font-medium uppercase tracking-widest">
+          <p className="text-[11px] text-slate-300 font-medium uppercase tracking-widest">
             Powered by Gemini & DALL-E • Designed with Clarity
           </p>
           <div className="flex items-center space-x-6">
-            <a href="#" className="text-[11px] text-zinc-400 hover:text-zinc-900 transition-colors font-medium uppercase tracking-widest">Documentation</a>
-            <a href="#" className="text-[11px] text-zinc-400 hover:text-zinc-900 transition-colors font-medium uppercase tracking-widest">Privacy</a>
+            <a href="#" className="text-[11px] text-slate-300 hover:text-slate-500 transition-colors font-medium uppercase tracking-widest">Documentation</a>
+            <a href="#" className="text-[11px] text-slate-300 hover:text-slate-500 transition-colors font-medium uppercase tracking-widest">Privacy</a>
           </div>
         </div>
       </footer>
