@@ -6,15 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-.codex
-.raw_google/
-.vscode/
-.clean/
-*.psd
-*.xmp
-ChatGPT Image*.png
-Generated Image*.png
-grok-image-*.png
-grok-video-*.mp4
-what-if-*.webp
-z-*.psd
