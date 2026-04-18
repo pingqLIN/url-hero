@@ -7,6 +7,7 @@ import AppHeader from './components/AppHeader';
 import ErrorBanner from './components/ErrorBanner';
 import FloatingSettingsButton from './components/FloatingSettingsButton';
 import KeyConfigPanel from './components/KeyConfigPanel';
+import LogViewer from './components/LogViewer';
 import SettingsPanel from './components/SettingsPanel';
 import UrlInputBar from './components/UrlInputBar';
 import WorkflowStepper from './components/WorkflowStepper';
@@ -62,7 +63,7 @@ export default function App() {
     steps: workflowSteps,
     jumpToStage,
   } = useWorkflow(t);
-  const { groups, showSettings, setShowSettings } = useWorkspaceSettings({
+  const { groups, showSettings, setShowSettings, showLogViewer, setShowLogViewer } = useWorkspaceSettings({
     demoMode,
     setDemoMode,
     t,
@@ -75,13 +76,17 @@ export default function App() {
     error,
     statusMessage,
     generatedImage,
+    previewCharacterImage,
     generatingImage,
+    imageLoaded,
     handleContentChange,
     handleCopy,
     handleEnterBriefStage,
     handleGenerateConcept,
     handleGeneratePreviewImage,
     handleRegeneratePrompt,
+    handleRegenerateSection,
+    resetApplication,
     imageText,
     includeText,
     loading,
@@ -91,6 +96,7 @@ export default function App() {
     result,
     setAspectRatio,
     setError,
+    setImageLoaded,
     setImageText,
     setIncludeText,
     setManualPrompt,
@@ -113,6 +119,7 @@ export default function App() {
   });
   const [entryTransitionActive, setEntryTransitionActive] = useState(false);
   const [isWorkspaceUrlEditing, setIsWorkspaceUrlEditing] = useState(false);
+  const [isEditingConcept, setIsEditingConcept] = useState(false);
   const [uiVisible, setUiVisible] = useState(true);
   const [workspaceUrlDraft, setWorkspaceUrlDraft] = useState('');
   const transitionTimerRef = useRef<number[]>([]);
@@ -120,7 +127,7 @@ export default function App() {
   const contentStageActive = workflowStage !== 'entry';
   const briefStageActive = workflowStage === 'brief';
   const entryInlineError = error === t('errorNoUrl') || error === t('errorInvalidUrlFormat') ? error : '';
-  const isBusy = loading || regeneratingPrompt || generatingImage || entryTransitionActive;
+  const isBusy = loading || regeneratingPrompt || generatingImage || entryTransitionActive || (generatedImage !== '' && !imageLoaded);
 
   useEffect(() => {
     return () => {
@@ -204,6 +211,7 @@ export default function App() {
         bgSequence={APP_BG_SEQUENCE}
         previewMode={workflowStage === 'preview'}
         isBusy={isBusy}
+        isEditingConcept={isEditingConcept}
       />
       <AnimatePresence>
         {isBusy && (
@@ -229,6 +237,8 @@ export default function App() {
             setShowSettings={setShowSettings}
             demoMode={demoMode}
             groups={groups}
+            workflowStage={workflowStage}
+            setWorkflowStage={setWorkflowStage}
             t={t}
           />
         </AnimatePresence>
@@ -238,6 +248,7 @@ export default function App() {
             <AppHeader
               locale={locale}
               onToggleLocale={() => setLocale(locale === 'en' ? 'zh-TW' : 'en')}
+              onReset={resetApplication}
               t={t}
               workflowStepper={
                 workflowStage === 'entry' ? null : (
@@ -373,7 +384,16 @@ export default function App() {
                       transition={{ duration: 0.5, ease: STANDARD_EASE }}
                       className="h-full"
                     >
-                      <FinalPreviewStage generatedImage={generatedImage} generatingImage={generatingImage} t={t} />
+                      <FinalPreviewStage
+                        generatedImage={generatedImage}
+                        previewCharacterImage={previewCharacterImage}
+                        generatingImage={generatingImage}
+                        imageLoaded={imageLoaded}
+                        setImageLoaded={setImageLoaded}
+                        promptText={effectivePromptText}
+                        mascotType={mascotType}
+                        t={t}
+                      />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -437,6 +457,8 @@ export default function App() {
                             onManualPromptChange={setManualPrompt}
                             onCopy={handleCopy}
                             onRegeneratePrompt={handleRegeneratePrompt}
+                            onRegenerateSection={handleRegenerateSection}
+                            onEditingChange={setIsEditingConcept}
                             renderWorkflowStepper={() => (
                               <WorkflowStepper
                               steps={workflowSteps}
@@ -531,6 +553,9 @@ export default function App() {
             </div>
           </motion.div>
         ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showLogViewer && <LogViewer key="logviewer" onClose={() => setShowLogViewer(false)} />}
       </AnimatePresence>
     </div>
   );

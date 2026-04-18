@@ -9,6 +9,7 @@ type AppBackdropProps = {
   bgSequence: string[];
   previewMode?: boolean;
   isBusy?: boolean;
+  isEditingConcept?: boolean;
 };
 
 type CoverMetrics = {
@@ -201,7 +202,7 @@ function computeCentralDustBoost(pointerX: number, viewportWidth: number) {
   return 1 - normalizedDistance;
 }
 
-function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, isBusy = false }: AppBackdropProps) {
+function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, isBusy = false, isEditingConcept = false }: AppBackdropProps) {
   const objectPosition = previewMode ? '50% 47%' : '50% 39%';
   const rootRef = useRef<HTMLDivElement | null>(null);
   const readyRef = useRef(false);
@@ -211,15 +212,17 @@ function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, 
   const goldDustFieldRef = useRef<HTMLDivElement | null>(null);
   const isBusyRef = useRef(isBusy);
   const previewModeRef = useRef(previewMode);
+  const isEditingConceptRef = useRef(isEditingConcept);
   const startLoopRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     isBusyRef.current = isBusy;
     previewModeRef.current = previewMode;
+    isEditingConceptRef.current = isEditingConcept;
     if (startLoopRef.current) {
       startLoopRef.current();
     }
-  }, [isBusy, previewMode]);
+  }, [isBusy, previewMode, isEditingConcept]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -238,6 +241,8 @@ function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, 
       currentDepth: 0.5,
       currentLightingDepth: 0.5,
       currentLightingIntensity: isBusyRef.current ? 0.15 : 1,
+      currentShadowAlphaMultiplier: 1,
+      currentClearCenterRadiusMultiplier: 1,
       currentDustBoost: 0,
       targetDepth: 0.5,
       targetLightingDepth: 0.5,
@@ -292,7 +297,7 @@ function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, 
       const nearFactor = 1 - farFactor;
       const depthLiftPx = 16 + nearFactor * 38;
       const lightCenterYPercent = clamp(((state.currentPointerY - depthLiftPx) / state.viewportHeight) * 100, 0, 100);
-      const clearCenterRadiusPx = Math.max(state.viewportHeight * (0.3 + nearFactor * 0.2), 340);
+      const clearCenterRadiusPx = Math.max(state.viewportHeight * (0.3 + nearFactor * 0.2), 340) * state.currentClearCenterRadiusMultiplier;
       const lightCoreRadiusPx = clearCenterRadiusPx * (0.34 + nearFactor * 0.12);
       const lightGlowRadiusPx = clearCenterRadiusPx + (70 + nearFactor * 120) * 4.6;
       const shadowEntryRadiusPx = clearCenterRadiusPx + (80 + farFactor * 44) * 2.2;
@@ -301,8 +306,8 @@ function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, 
       const intensity = state.currentLightingIntensity;
       const lightCoreAlpha = (0.014 + nearFactor * 0.096) * 0.6 * intensity;
       const lightGlowAlpha = (0.003 + nearFactor * 0.028) * 0.6 * intensity;
-      const shadowMidAlpha = 0.42 + farFactor * 0.24;
-      const shadowOuterAlpha = 0.3 + farFactor * 0.22;
+      const shadowMidAlpha = (0.42 + farFactor * 0.24) * state.currentShadowAlphaMultiplier;
+      const shadowOuterAlpha = (0.3 + farFactor * 0.22) * state.currentShadowAlphaMultiplier;
 
       focusLight.style.background = `
         radial-gradient(
@@ -342,10 +347,17 @@ function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, 
 
     const draw = () => {
       let targetIntensity = 1;
+      let targetShadowAlphaMultiplier = 1;
+      let targetClearCenterRadiusMultiplier = 1;
       let intensitySmoothing = 0.08;
       const now = performance.now();
 
-      if (isBusyRef.current) {
+      if (isEditingConceptRef.current) {
+        state.breathingStartTime = 0;
+        targetIntensity = 0;
+        targetShadowAlphaMultiplier = 1.6;
+        targetClearCenterRadiusMultiplier = 0;
+      } else if (isBusyRef.current) {
         if (previewModeRef.current) {
           if (!state.breathingStartTime) {
             state.breathingStartTime = now;
@@ -364,9 +376,12 @@ function AppBackdrop({ bgDepthMap, bgOverride, bgSequence, previewMode = false, 
         state.breathingStartTime = 0;
         if (previewModeRef.current) {
           targetIntensity = 1;
+          intensitySmoothing = 0.015; // Slow down the transition back to normal (approx 2s to match image fade-in)
         }
       }
       state.currentLightingIntensity += (targetIntensity - state.currentLightingIntensity) * intensitySmoothing;
+      state.currentShadowAlphaMultiplier += (targetShadowAlphaMultiplier - state.currentShadowAlphaMultiplier) * intensitySmoothing;
+      state.currentClearCenterRadiusMultiplier += (targetClearCenterRadiusMultiplier - state.currentClearCenterRadiusMultiplier) * intensitySmoothing;
       
       if (previewModeRef.current) {
         state.targetPointerX = state.viewportWidth * 0.5;

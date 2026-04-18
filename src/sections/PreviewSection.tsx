@@ -153,16 +153,6 @@ function PreviewSection({
               {t('includeTextInImage')}
             </label>
           </div>
-          {includeText && (
-            <input
-              type="text"
-              value={imageText}
-              onChange={(e) => setImageText(e.target.value)}
-              placeholder={t('textInImagePlaceholder')}
-              aria-label={t('textInImagePlaceholder')}
-              className={INPUT_CLS}
-            />
-          )}
         </div>
 
         <motion.button

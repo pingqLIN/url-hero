@@ -117,7 +117,7 @@ export const messages = {
     aspectRatioVertical: 'Vertical (3:4)',
     openAiAspectRatioHint:
       'OpenAI image generation in this app supports square, landscape, and portrait output. This ratio will render as square.',
-    includeTextInImage: 'Include text in image',
+    includeTextInImage: 'Include visual elements associated with the URL',
     textInImagePlaceholder: 'Enter text to appear in the image...',
     generatePreviewImage: 'Generate Preview Image',
     downloadImage: 'Download Image',
@@ -144,6 +144,8 @@ export const messages = {
     errorImagePermissionDenied:
       'Image API key permission is insufficient (403 Permission Denied). Please verify the key or try another image model.',
     errorUnknown: 'An unknown error occurred.',
+    
+    reset: 'Reset',
 
     systemPromptRole:
       'You are an elite website brand strategist, mascot designer, and AI image prompt engineer.',
@@ -157,7 +159,7 @@ export const messages = {
     systemPromptRule4:
       'Section 6 must begin exactly with: "A highly detailed, realistic 3D cartoon mascot representing the website \\"{{url}}\\"..."',
     systemPromptRule5:
-      'Section 6 must include a glowing neon hologram of the website URL floating in the scene.',
+      'Section 6 must NOT include any text, letters, signage, or URL holograms natively in the prompt.',
     systemPromptRule6:
       'Section 6 must end with rendering keywords such as Unreal Engine 5, Octane render, ray tracing, 8k.',
 
@@ -165,6 +167,7 @@ export const messages = {
     regenPromptTask:
       'Convert the following character brief into one complete, fluent, highly detailed English prompt for image generation.',
     regenPromptInstruction: 'Rewrite the final image prompt.',
+    regenSectionTask: 'Please rewrite the "{{section}}" part based on the current concept. Return ONLY the rewritten plain text for this section, without any extra commentary or markup.',
     targetUrlPrefix: 'Target website URL: ',
 
     schemaSection1Content:
@@ -310,7 +313,7 @@ export const messages = {
     aspectRatioStandard: '標準 (4:3)',
     aspectRatioVertical: '垂直 (3:4)',
     openAiAspectRatioHint: '此 app 中的 OpenAI 圖像生成僅支援正方形、橫向與直向輸出；這個比例會以正方形生成。',
-    includeTextInImage: '在圖片中加入文字',
+    includeTextInImage: '圖片中顯示與網址相關的影像',
     textInImagePlaceholder: '輸入要顯示在圖片中的文字...',
     generatePreviewImage: '生成預覽圖',
     downloadImage: '下載圖片',
@@ -336,6 +339,8 @@ export const messages = {
     errorImagePermissionDenied:
       '圖像 API Key 權限不足（403 Permission Denied），請確認金鑰有效或改用其他圖像模型。',
     errorUnknown: '發生未知錯誤。',
+    
+    reset: '重置',
 
     systemPromptRole: '你是一位頂尖的網站品牌策略師、吉祥物設計師與 AI 繪圖 Prompt 工程師。',
     systemPromptTask: '請分析目標網站網址，並將其轉化為具體的 3D 廣告風格吉祥物概念。',
@@ -347,7 +352,7 @@ export const messages = {
     systemPromptRule4:
       'Section 6 的開頭必須嚴格為：「A highly detailed, realistic 3D cartoon mascot representing the website \\"{{url}}\\"...」',
     systemPromptRule5:
-      'Section 6 必須包含讓網站網址以發光霓虹全像投影形式漂浮在場景中的指令。',
+      'Section 6 絕對不要包含任何文字、字母、標誌或顯示網址的霓虹全像投影。',
     systemPromptRule6:
       'Section 6 結尾必須放上如 Unreal Engine 5、Octane render、ray tracing、8k 等渲染關鍵字。',
 
@@ -355,6 +360,7 @@ export const messages = {
     regenPromptTask:
       '請將以下角色設定轉換成一段完整、流暢且細節豐富的英文圖像生成 Prompt。',
     regenPromptInstruction: '請重新撰寫最終圖像 Prompt。',
+    regenSectionTask: '請根據當前的角色設定，重新撰寫「{{section}}」的部分。請只回傳重新撰寫後的純文字，不要包含任何多餘的引言、Markdown 或標記。',
     targetUrlPrefix: '目標網址：',
 
     schemaSection1Content: '拆解網站意義，定義 2 到 3 個核心概念支柱。',

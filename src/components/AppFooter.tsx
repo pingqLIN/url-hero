@@ -207,28 +207,28 @@ function AppFooter({ locale, t }: AppFooterProps) {
 
   return (
     <>
-      <footer className="mx-auto mt-10 max-w-7xl border-t border-white/8 py-6">
-        <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-          <p className="text-[11px] font-medium uppercase tracking-[0.25em] text-white/22">
+      <footer className="mx-auto mt-6 mb-6 max-w-max">
+        <LiquidGlass as="div" variant="compact" className="px-6 py-2.5 flex flex-col items-center justify-between gap-4 sm:flex-row shadow-[0_8px_32px_rgba(2,6,20,0.4)]">
+          <p className="text-[11px] font-medium uppercase tracking-[0.25em] text-white/50">
             {t('footerPoweredBy')}
           </p>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5">
             <button
               type="button"
               onClick={() => setActivePanel('docs')}
-              className="text-[11px] font-medium uppercase tracking-[0.25em] text-white/22 transition-colors hover:text-white/42"
+              className="text-[11px] font-medium uppercase tracking-[0.25em] text-white/40 transition-colors hover:text-white/80"
             >
               {t('docs')}
             </button>
             <button
               type="button"
               onClick={() => setActivePanel('privacy')}
-              className="text-[11px] font-medium uppercase tracking-[0.25em] text-white/22 transition-colors hover:text-white/42"
+              className="text-[11px] font-medium uppercase tracking-[0.25em] text-white/40 transition-colors hover:text-white/80"
             >
               {t('privacy')}
             </button>
           </div>
-        </div>
+        </LiquidGlass>
       </footer>
 
       <AnimatePresence>

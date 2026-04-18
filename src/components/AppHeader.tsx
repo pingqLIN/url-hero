@@ -1,4 +1,4 @@
-import { Languages, Sparkles } from 'lucide-react';
+import { Languages, RotateCcw, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { STANDARD_EASE } from '../constants';
@@ -9,11 +9,12 @@ import LiquidGlass from './LiquidGlass';
 type AppHeaderProps = {
   locale: Locale;
   onToggleLocale: () => void;
+  onReset: () => void;
   t: TFunction;
   workflowStepper?: ReactNode;
 };
 
-function AppHeader({ locale, onToggleLocale, t, workflowStepper }: AppHeaderProps) {
+function AppHeader({ locale, onToggleLocale, onReset, t, workflowStepper }: AppHeaderProps) {
   return (
     <motion.header
       initial={{ opacity: 0, y: -12 }}
@@ -33,14 +34,24 @@ function AppHeader({ locale, onToggleLocale, t, workflowStepper }: AppHeaderProp
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onToggleLocale}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/68 transition-colors hover:bg-white/[0.08] hover:text-white"
-            >
-              <Languages className="h-3.5 w-3.5" />
-              {locale === 'en' ? t('traditionalChinese') : t('english')}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onReset}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/68 transition-colors hover:bg-white/[0.08] hover:text-white"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t('reset')}
+              </button>
+              <button
+                type="button"
+                onClick={onToggleLocale}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/68 transition-colors hover:bg-white/[0.08] hover:text-white"
+              >
+                <Languages className="h-3.5 w-3.5" />
+                {locale === 'en' ? t('traditionalChinese') : t('english')}
+              </button>
+            </div>
           </div>
           {workflowStepper ? <div>{workflowStepper}</div> : null}
         </div>

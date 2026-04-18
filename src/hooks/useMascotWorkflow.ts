@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildDemoConceptResult, buildSystemPrompt, fetchConcept, fetchRegeneratedPrompt } from '../services/conceptService';
+import { buildDemoConceptResult, buildSystemPrompt, fetchConcept, fetchRegeneratedPrompt, fetchRegeneratedSection } from '../services/conceptService';
 import { getReadableApiError } from '../services/errorService';
 import { generateImage } from '../services/imageService';
 import type { Locale } from '../i18n/messages';
@@ -67,17 +67,17 @@ function addPromptConstraints(
   aspectRatio: string,
   mascotType: MascotType,
   includeText: boolean,
-  imageText: string,
+  url: string,
 ) {
   let nextPrompt = prompt;
 
   nextPrompt += `\n\n${buildAspectRatioInstruction(aspectRatio)}`;
 
-  if (includeText && imageText.trim()) {
-    nextPrompt += `\n\nTypography Instruction: The image MUST prominently feature the text "${imageText.trim()}" integrated into the design.`;
+  if (includeText && url) {
+    nextPrompt += `\n\nDesign Instruction: The URL "${url}" must be prominently displayed as a glowing neon hologram, shimmering and floating dynamically in the scene.`;
   } else {
     nextPrompt +=
-      '\n\nTypography Constraint: Do not include any readable words, letters, logos, UI copy, signage, or typographic elements in the image.';
+      '\n\nDesign Constraint: Do not include any readable words, letters, logos, UI copy, signage, or typographic elements in the image.';
   }
 
   if (mascotType === 'animal') {
@@ -90,6 +90,8 @@ function addPromptConstraints(
 
   return nextPrompt;
 }
+
+import { removeWhiteBackground, compositeImages } from '../utils/imageUtils';
 
 export function useMascotWorkflow({
   bgResultFlash,
@@ -115,16 +117,18 @@ export function useMascotWorkflow({
   const [regeneratingPrompt, setRegeneratingPrompt] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatedImage, setGeneratedImage] = useState('');
+  const [previewCharacterImage, setPreviewCharacterImage] = useState('');
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('1:1');
-  const [includeText, setIncludeText] = useState(false);
+  const [includeText, setIncludeText] = useState(true);
   const [imageText, setImageText] = useState('');
 
   const analysisLanguage = locale === 'zh-TW' ? 'Traditional Chinese used in Taiwan' : 'English';
   const mascotInstruction = useMemo(() => buildMascotInstruction(mascotType), [mascotType]);
   const promptText = result ? result.section6.content : manualPrompt;
   const effectivePromptText = useMemo(
-    () => (promptText ? addPromptConstraints(promptText, aspectRatio, mascotType, includeText, imageText) : ''),
-    [aspectRatio, imageText, includeText, mascotType, promptText],
+    () => (promptText ? addPromptConstraints(promptText, aspectRatio, mascotType, includeText, url) : ''),
+    [aspectRatio, includeText, mascotType, promptText, url],
   );
   const entryMorphProgress = Math.max(0, Math.min(1, (url.trim().length - 2) / 6));
   const normalizedUrl = useMemo(() => canonicalizeTargetUrl(url), [url]);
@@ -298,7 +302,7 @@ export function useMascotWorkflow({
     }
   };
 
-  const handleRegeneratePrompt = async () => {
+  const handleRegeneratePrompt = async (overrideMascotType?: MascotType) => {
     if (!result) return;
 
     setRegeneratingPrompt(true);
@@ -332,9 +336,11 @@ export function useMascotWorkflow({
         throw new Error(t('errorNoApiKey'));
       }
 
+      const instructionToUse = overrideMascotType ? buildMascotInstruction(overrideMascotType) : mascotInstruction;
+
       const nextPrompt = await fetchRegeneratedPrompt({
         apiKey,
-        mascotInstruction,
+        mascotInstruction: instructionToUse,
         model: textConfig.model,
         result,
         t,
@@ -350,6 +356,66 @@ export function useMascotWorkflow({
         getReadableApiError({
           err: promptError,
           fallbackMessage: t('errorGeneratePrompt'),
+          permissionMessage: t('errorPermissionDenied'),
+          t,
+        }),
+      );
+    } finally {
+      setRegeneratingPrompt(false);
+    }
+  };
+
+  const handleRegenerateSection = async (section: SectionKey) => {
+    if (!result) return;
+    
+    // Using regeneratingPrompt state to disable all inputs while thinking
+    setRegeneratingPrompt(true);
+    setError('');
+    setStatusMessage('');
+
+    try {
+      if (demoMode) {
+        await delay(320);
+        setResult((previous) =>
+          previous
+            ? {
+                ...previous,
+                [section]: {
+                  ...previous[section],
+                  content: `${previous[section].content} (Refined version)`,
+                },
+              }
+            : previous,
+        );
+        return;
+      }
+
+      if (textConfig.provider !== 'google') {
+        throw new Error(t('errorCors'));
+      }
+
+      const apiKey = resolveGoogleTextKey();
+      if (!apiKey) {
+        throw new Error(t('errorNoApiKey'));
+      }
+
+      const nextContent = await fetchRegeneratedSection({
+        apiKey,
+        model: textConfig.model,
+        result,
+        section,
+        t,
+        url: url.trim(),
+      });
+
+      setResult((previous) =>
+        previous ? { ...previous, [section]: { ...previous[section], content: nextContent } } : previous,
+      );
+    } catch (regenError) {
+      setError(
+        getReadableApiError({
+          err: regenError,
+          fallbackMessage: t('errorGenerateContent'),
           permissionMessage: t('errorPermissionDenied'),
           t,
         }),
@@ -383,6 +449,7 @@ export function useMascotWorkflow({
 
     setGeneratingImage(true);
     setGeneratedImage('');
+    setPreviewCharacterImage('');
     setError('');
     setStatusMessage('');
     clearBgTimers();
@@ -401,33 +468,72 @@ export function useMascotWorkflow({
                 : demoImages.auto;
 
         setGeneratedImage(demoImage);
+        setPreviewCharacterImage(demoImage);
         return;
       }
+
+      const characterOnlyBasePrompt = result
+        ? `${result.section1.content}. ${result.section2.content}. ${result.section3.content}. ${result.section5.content}. CRITICAL: Isolated on a clean, solid white background, no environment, no background elements. CRITICAL LIGHTING MATCH: Provide dramatic and highly realistic dynamic lighting, strong rim light, and ambient occlusion so the 3D character has robust volume, depth, and blends flawlessly into a high-end composited scene.`
+        : `${manualPrompt}. CRITICAL: Isolated on a clean, solid white background, no environment, no background elements. CRITICAL LIGHTING MATCH: Provide dramatic and highly realistic dynamic lighting, strong rim light, and ambient occlusion so the 3D character has robust volume, depth, and blends flawlessly into a high-end composited scene.`;
+      const effectiveCharacterOnlyPrompt = addPromptConstraints(characterOnlyBasePrompt, aspectRatio, mascotType, includeText, url);
+
+      const environmentOnlyBasePrompt = result
+        ? `${result.section4.content}. ${result.section5.content}. CRITICAL: ONLY generate the background environment. NO characters, NO mascot, completely empty landscape/scene.`
+        : `${manualPrompt}. CRITICAL: ONLY generate the background environment. NO characters, NO mascot, completely empty landscape/scene.`;
+      const effectiveEnvironmentOnlyPrompt = addPromptConstraints(environmentOnlyBasePrompt, aspectRatio, mascotType, false, '');
 
       if (usingGoogleImage) {
-        const nextImage = await generateImage({
-          apiKey: resolvedGoogleImageKey,
-          aspectRatio,
-          model: imageConfig.model,
-          prompt: effectivePromptText,
-          provider: 'google',
-          t,
-        });
+        const [nextBgImageRaw, nextCharacterImageRaw] = await Promise.all([
+          generateImage({
+            apiKey: resolvedGoogleImageKey,
+            aspectRatio,
+            model: imageConfig.model,
+            prompt: effectiveEnvironmentOnlyPrompt,
+            provider: 'google',
+            t,
+          }),
+          generateImage({
+            apiKey: resolvedGoogleImageKey,
+            aspectRatio,
+            model: imageConfig.model,
+            prompt: effectiveCharacterOnlyPrompt,
+            provider: 'google',
+            t,
+          })
+        ]);
+
+        const nextCharacterImage = await removeWhiteBackground(nextCharacterImageRaw);
+        const nextImage = await compositeImages(nextBgImageRaw, nextCharacterImage);
 
         setGeneratedImage(nextImage);
+        setPreviewCharacterImage(nextCharacterImage);
         return;
       }
 
-      const nextImage = await generateImage({
-        apiKey: imageConfig.apiKey.trim(),
-        aspectRatio,
-        model: imageConfig.model,
-        prompt: effectivePromptText,
-        provider: 'openai',
-        t,
-      });
+      const [nextBgImageRaw, nextCharacterImageRaw] = await Promise.all([
+        generateImage({
+          apiKey: imageConfig.apiKey.trim(),
+          aspectRatio,
+          model: imageConfig.model,
+          prompt: effectiveEnvironmentOnlyPrompt,
+          provider: 'openai',
+          t,
+        }),
+        generateImage({
+          apiKey: imageConfig.apiKey.trim(),
+          aspectRatio,
+          model: imageConfig.model,
+          prompt: effectiveCharacterOnlyPrompt,
+          provider: 'openai',
+          t,
+        })
+      ]);
+
+      const nextCharacterImage = await removeWhiteBackground(nextCharacterImageRaw);
+      const nextImage = await compositeImages(nextBgImageRaw, nextCharacterImage);
 
       setGeneratedImage(nextImage);
+      setPreviewCharacterImage(nextCharacterImage);
     } catch (imageError) {
       setError(
         getReadableApiError({
@@ -444,6 +550,26 @@ export function useMascotWorkflow({
     }
   };
 
+  const resetApplication = () => {
+    setUrl('');
+    setManualPrompt('');
+    setResult(null);
+    setGeneratedImage('');
+    setPreviewCharacterImage('');
+    setAspectRatio('1:1');
+    setIncludeText(true);
+    setMascotType('auto');
+    setError('');
+    setStatusMessage('');
+    setCopied(false);
+    setLoading(false);
+    setGeneratingImage(false);
+    setRegeneratingPrompt(false);
+    setImageLoaded(false);
+    setWorkflowStage('entry');
+    clearBgTimers();
+  };
+
   return {
     aspectRatio,
     copied,
@@ -452,13 +578,17 @@ export function useMascotWorkflow({
     error,
     statusMessage,
     generatedImage,
+    previewCharacterImage,
     generatingImage,
+    imageLoaded,
     handleContentChange,
     handleCopy,
     handleEnterBriefStage,
     handleGenerateConcept,
     handleGeneratePreviewImage,
     handleRegeneratePrompt,
+    handleRegenerateSection,
+    resetApplication,
     imageText,
     includeText,
     loading,
@@ -469,6 +599,7 @@ export function useMascotWorkflow({
     result,
     setAspectRatio,
     setError,
+    setImageLoaded,
     setImageText,
     setIncludeText,
     setManualPrompt,

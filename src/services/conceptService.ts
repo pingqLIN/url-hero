@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { Locale } from '../i18n/messages';
-import type { ConceptResult, TFunction } from '../types';
+import type { ConceptResult, SectionKey, TFunction } from '../types';
 
 type BuildSystemPromptParams = {
   analysisLanguage: string;
@@ -27,6 +27,15 @@ type FetchRegeneratedPromptParams = {
   mascotInstruction: string;
   model: string;
   result: ConceptResult;
+  t: TFunction;
+  url: string;
+};
+
+type FetchRegeneratedSectionParams = {
+  apiKey: string;
+  model: string;
+  result: ConceptResult;
+  section: SectionKey;
   t: TFunction;
   url: string;
 };
@@ -184,5 +193,48 @@ ${t('regenPromptTask')}
   });
 
   if (!response.text) throw new Error(t('errorGeneratePrompt'));
+  return response.text;
+}
+
+export async function fetchRegeneratedSection({
+  apiKey,
+  model,
+  result,
+  section,
+  t,
+  url,
+}: FetchRegeneratedSectionParams): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const sectionTitleKey = {
+    section1: 'coreConcept',
+    section2: 'characterSubject',
+    section3: 'equipment',
+    section4: 'environment',
+    section5: 'lighting',
+    section6: 'aiVisualPrompt',
+  }[section] as string;
+
+  const systemPrompt = `
+${t('systemPromptRole')}
+${t('regenSectionTask', { section: t(sectionTitleKey) })}
+
+Current Concept Context:
+1. ${t('coreConcept')}: ${result.section1.content}
+2. ${t('characterSubject')}: ${result.section2.content}
+3. ${t('equipment')}: ${result.section3.content}
+4. ${t('environment')}: ${result.section4.content}
+5. ${t('lighting')}: ${result.section5.content}
+
+Target URL: ${url}
+`.trim();
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: `Please rethink and rewrite the "${t(sectionTitleKey)}" part.`,
+    config: { systemInstruction: systemPrompt },
+  });
+
+  if (!response.text) throw new Error(t('errorGenerateContent'));
   return response.text;
 }

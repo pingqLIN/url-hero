@@ -1,6 +1,7 @@
 import {
   Check,
   Copy,
+  Dices,
   Edit2,
   Lightbulb,
   Map,
@@ -10,7 +11,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CustomSelect } from '../components/CustomSelect';
 import { GLASS_PANEL_CLS, IMAGE_MODEL_NAMES, LABEL_CLS, SELECT_CLS, STANDARD_EASE } from '../constants';
 import type { ConceptResult, MascotType, SectionKey } from '../types';
@@ -31,7 +32,9 @@ type ConceptSectionProps = {
   onContentChange: (section: SectionKey, content: string) => void;
   onManualPromptChange: (value: string) => void;
   onCopy: (text: string) => void;
-  onRegeneratePrompt: () => Promise<void> | void;
+  onRegeneratePrompt: (overrideMascotType?: MascotType) => Promise<void> | void;
+  onRegenerateSection: (section: SectionKey) => Promise<void> | void;
+  onEditingChange?: (isEditing: boolean) => void;
   renderWorkflowStepper: () => ReactNode;
   t: TranslateFn;
 };
@@ -105,14 +108,23 @@ function ConceptSection({
   onManualPromptChange,
   onCopy,
   onRegeneratePrompt,
+  onRegenerateSection,
+  onEditingChange,
   renderWorkflowStepper,
   t,
 }: ConceptSectionProps) {
   const [editingSections, setEditingSections] = useState<Partial<Record<SectionKey, boolean>>>({});
   const [activeTab, setActiveTab] = useState<'concept' | 'prompt'>('concept');
   const [conceptPromptSyncSignature, setConceptPromptSyncSignature] = useState('');
+  const previousMascotTypeRef = useRef<MascotType>(mascotType);
   const hasResult = Boolean(result);
   const conceptDirty = Boolean(result) && buildConceptSignature(result, mascotType) !== conceptPromptSyncSignature;
+
+  const isEditingAny = Object.values(editingSections).some(Boolean);
+
+  useEffect(() => {
+    onEditingChange?.(isEditingAny);
+  }, [isEditingAny, onEditingChange]);
 
   useEffect(() => {
     setEditingSections({});
@@ -153,22 +165,50 @@ function ConceptSection({
     setActiveTab('prompt');
   };
 
-  const renderEditButton = (section: SectionKey, sectionLabel: string) => {
+  useEffect(() => {
+    if (previousMascotTypeRef.current !== mascotType) {
+      previousMascotTypeRef.current = mascotType;
+      if (hasResult) {
+        // Use a small timeout to ensure state has updated in the parent
+        setTimeout(() => {
+          void onRegeneratePrompt();
+          setActiveTab('prompt');
+        }, 0);
+      }
+    }
+  }, [mascotType, hasResult, onRegeneratePrompt]);
+
+  const renderSectionControls = (section: SectionKey, sectionLabel: string) => {
     const isEditing = Boolean(editingSections[section]);
-    const buttonLabel = isEditing
+    const editButtonLabel = isEditing
       ? t('saveSection', { section: sectionLabel })
       : t('editSection', { section: sectionLabel });
 
     return (
-      <button
-        type="button"
-        onClick={() => toggleSectionEditing(section)}
-        aria-label={buttonLabel}
-        title={buttonLabel}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/56 transition-colors hover:border-white/18 hover:text-white/84"
-      >
-        {isEditing ? <Check className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
-      </button>
+      <div className="flex items-center gap-2">
+        {section !== 'section6' && (
+          <button
+            type="button"
+            onClick={() => onRegenerateSection(section)}
+            aria-label={t('regenSectionInstruction')}
+            title={t('regenSectionInstruction')}
+            disabled={regeneratingPrompt || isEditing}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/56 transition-colors hover:border-white/18 hover:text-white/84 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Dices className="h-4 w-4" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => toggleSectionEditing(section)}
+          aria-label={editButtonLabel}
+          title={editButtonLabel}
+          disabled={regeneratingPrompt}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/56 transition-colors hover:border-white/18 hover:text-white/84 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isEditing ? <Check className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
+        </button>
+      </div>
     );
   };
 
@@ -295,7 +335,7 @@ function ConceptSection({
                               {title}
                             </h3>
                           </div>
-                          {renderEditButton(section.key, title)}
+                          {renderSectionControls(section.key, title)}
                         </div>
 
                         {isEditing ? (
@@ -344,7 +384,7 @@ function ConceptSection({
                                 {title}
                               </h3>
                             </div>
-                            {renderEditButton(section.key, title)}
+                            {renderSectionControls(section.key, title)}
                           </div>
 
                           {isEditing ? (
@@ -388,7 +428,7 @@ function ConceptSection({
                       <Copy className="h-3.5 w-3.5" />
                       {copied ? t('copied') : t('copyPrompt')}
                     </button>
-                    {renderEditButton('section6', t('aiVisualPrompt'))}
+                    {renderSectionControls('section6', t('aiVisualPrompt'))}
                   </div>
                 </div>
 
